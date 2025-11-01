@@ -1,8 +1,9 @@
 import React from 'react';
 
 const suggestions = [
+  'Generate an image of a robot chef in 16:9',
+  'Add a party hat to the last image',
   'Tell me a story about a dragon',
-  'Generate an image of a robot chef',
   'Search for the latest news on AI',
 ];
 

@@ -1,18 +1,11 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { startJarvisSession, stopJarvisSession } from './services/jarvisService.ts';
-// Fix: Import AIStudio interface to resolve declaration error.
-import { ChatMessage, FunctionCallInfo, AssistantStatus, GroundingSource, AIStudio } from './types.ts';
+// Fix: Removed AIStudio from import as global declaration is now handled in types.ts.
+import { ChatMessage, FunctionCallInfo, AssistantStatus, GroundingSource } from './types.ts';
 import { MicIcon, StopIcon } from './components/Icons.tsx';
 import { CommandDisplay } from './components/CommandDisplay.tsx';
 import { ChatHistory } from './components/ChatHistory.tsx';
 import { SuggestionChips } from './components/SuggestionChips.tsx';
-
-declare global {
-  interface Window {
-    // Fix: Use the named AIStudio interface to avoid type conflicts with other declarations.
-    aistudio: AIStudio;
-  }
-}
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<AssistantStatus>('idle');
@@ -84,10 +77,15 @@ const App: React.FC = () => {
   
   const handleError = useCallback((error: string) => {
     setStatus('error');
-    setStatusMessage(error);
-    if (error.toLowerCase().includes('network error') || error.toLowerCase().includes('not found')) {
+    const lowerCaseError = error.toLowerCase();
+    
+    if (lowerCaseError.includes('network error') || lowerCaseError.includes('not found') || lowerCaseError.includes('api key')) {
       setApiKeySelected(false);
       setStatusMessage('API Key error. Please select a valid key to continue.');
+    } else if (lowerCaseError.includes('service is currently unavailable')) {
+      setStatusMessage('Service unavailable. Please try again shortly.');
+    } else {
+      setStatusMessage(error); // Default to showing the received error message.
     }
   }, []);
 
@@ -132,11 +130,11 @@ const App: React.FC = () => {
     setTimeout(() => setLastFunctionCall(null), 4000);
   }, []);
   
-  const handleImageGenerated = useCallback((imageUrl: string, prompt: string) => {
+  const handleImageGenerated = useCallback((imageUrl: string, description: string) => {
       setHistory(prev => [...prev, {
         role: 'jarvis',
         imageUrl: imageUrl,
-        text: `Here is your image of: "${prompt}"`
+        text: description
       }]);
   }, []);
 

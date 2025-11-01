@@ -65,15 +65,28 @@ const controlLightFunctionDeclaration: FunctionDeclaration = {
 };
 
 const generateImageFunctionDeclaration: FunctionDeclaration = {
-  name: 'generateImageFromPrompt',
-  description: 'Generates an image based on a detailed text description.',
+  name: 'generateImage',
+  description: 'Generates a high-quality image based on a detailed text description and optional aspect ratio.',
   parameters: {
     type: Type.OBJECT,
     properties: {
       prompt: { type: Type.STRING, description: 'A creative and descriptive prompt for the image to be generated.' },
+      aspectRatio: { type: Type.STRING, description: 'Optional aspect ratio for the image. Supported values: "1:1", "16:9", "9:16", "4:3", "3:4". Default is "1:1".' }
     },
     required: ['prompt'],
   },
+};
+
+const editImageFunctionDeclaration: FunctionDeclaration = {
+    name: 'editLastImage',
+    description: 'Edits the most recently generated image based on a text prompt. For example, "add a hat to the last image".',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            prompt: { type: Type.STRING, description: 'A description of the edit to be applied to the last image.' },
+        },
+        required: ['prompt'],
+    },
 };
 
 const generateStoryFunctionDeclaration: FunctionDeclaration = {
@@ -111,13 +124,14 @@ let outputAudioContext: AudioContext | null = null;
 let outputNode: GainNode | null = null;
 let nextStartTime = 0;
 const sources = new Set<AudioBufferSourceNode>();
+let lastImageData: { data: string; mimeType: string; } | null = null;
 
 export const startJarvisSession = async (callbacks: {
   onStatusUpdate: (status: AssistantStatus, message: string) => void;
   onUserTranscript: (transcript: string, isFinal: boolean) => void;
   onJarvisTranscript: (transcript: string, isFinal: boolean) => void;
   onFunctionCall: (functionCall: FunctionCallInfo) => void;
-  onImageGenerated: (imageUrl: string, prompt: string) => void;
+  onImageGenerated: (imageUrl: string, description: string) => void;
   onGroundingSources: (sources: GroundingSource[]) => void;
   onError: (error: string) => void;
 }) => {
@@ -212,19 +226,23 @@ export const startJarvisSession = async (callbacks: {
                     if (!session) return;
 
                     switch (fc.name) {
-                        case 'generateImageFromPrompt':
+                        case 'generateImage':
                           callbacks.onStatusUpdate('thinking', `Generating image: ${fc.args.prompt}`);
                           try {
-                              const imageGenResponse = await ai.models.generateContent({
-                                  model: 'gemini-2.5-flash-image',
-                                  contents: { parts: [{ text: fc.args.prompt }] },
-                                  config: { responseModalities: [Modality.IMAGE] },
+                              const imageGenResponse = await ai.models.generateImages({
+                                  model: 'imagen-4.0-generate-001',
+                                  prompt: fc.args.prompt,
+                                  config: {
+                                    numberOfImages: 1,
+                                    outputMimeType: 'image/png',
+                                    aspectRatio: fc.args.aspectRatio || '1:1',
+                                  },
                               });
-                              const imagePart = imageGenResponse.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
-                              if (imagePart?.inlineData) {
-                                  const base64ImageBytes = imagePart.inlineData.data;
-                                  const imageUrl = `data:${imagePart.inlineData.mimeType};base64,${base64ImageBytes}`;
-                                  callbacks.onImageGenerated(imageUrl, fc.args.prompt);
+                              const base64ImageBytes = imageGenResponse.generatedImages[0].image.imageBytes;
+                              if (base64ImageBytes) {
+                                  lastImageData = { data: base64ImageBytes, mimeType: 'image/png' };
+                                  const imageUrl = `data:image/png;base64,${base64ImageBytes}`;
+                                  callbacks.onImageGenerated(imageUrl, `Here is your image of: "${fc.args.prompt}"`);
                                   session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "OK, the image has been generated and displayed." } } });
                               } else { throw new Error("No image data returned from API."); }
                           } catch (error) {
@@ -233,6 +251,37 @@ export const startJarvisSession = async (callbacks: {
                               session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { error: `Failed to generate image: ${errorMessage}` } } });
                           }
                           break;
+
+                        case 'editLastImage':
+                            if (!lastImageData) {
+                                session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "There is no image to edit. Please generate one first." } } });
+                                break;
+                            }
+                            callbacks.onStatusUpdate('thinking', `Editing image: ${fc.args.prompt}`);
+                            try {
+                                const imageEditResponse = await ai.models.generateContent({
+                                    model: 'gemini-2.5-flash-image',
+                                    contents: { parts: [
+                                        { inlineData: { data: lastImageData.data, mimeType: lastImageData.mimeType } },
+                                        { text: fc.args.prompt },
+                                    ]},
+                                    config: { responseModalities: [Modality.IMAGE] },
+                                });
+                                const imagePart = imageEditResponse.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
+                                if (imagePart?.inlineData) {
+                                    const base64ImageBytes = imagePart.inlineData.data;
+                                    const mimeType = imagePart.inlineData.mimeType;
+                                    lastImageData = { data: base64ImageBytes, mimeType: mimeType }; // Update last image
+                                    const imageUrl = `data:${mimeType};base64,${base64ImageBytes}`;
+                                    callbacks.onImageGenerated(imageUrl, `I've edited the image as you requested: "${fc.args.prompt}"`);
+                                    session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "OK, the image has been edited and displayed." } } });
+                                } else { throw new Error("No edited image data returned from API."); }
+                            } catch (error) {
+                                const errorMessage = error instanceof Error ? error.message : "Unknown error.";
+                                callbacks.onError(`Image editing failed.`);
+                                session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { error: `Failed to edit image: ${errorMessage}` } } });
+                            }
+                            break;
 
                         case 'generateStory':
                             callbacks.onStatusUpdate('thinking', 'Writing story...');
@@ -302,10 +351,11 @@ export const startJarvisSession = async (callbacks: {
         tools: [{ functionDeclarations: [
             controlLightFunctionDeclaration, 
             generateImageFunctionDeclaration,
+            editImageFunctionDeclaration,
             generateStoryFunctionDeclaration,
             searchWebFunctionDeclaration,
         ] }],
-        systemInstruction: "You are Jarvis, a sophisticated AI assistant that communicates primarily through spoken voice. Your verbal responses are concise and helpful for general tasks, but you can be creative and detailed when asked to write a story. You can control smart home devices, generate images, write stories, and search the web for up-to-date information using the tools provided.",
+        systemInstruction: "You are Jarvis, a sophisticated AI assistant that communicates primarily through spoken voice. Your verbal responses are concise and helpful for general tasks, but you can be creative and detailed when asked to write a story. You can control smart home devices, generate high-quality images, edit the last generated image, write stories, and search the web for up-to-date information using the tools provided.",
       },
     });
 
@@ -350,4 +400,5 @@ export const stopJarvisSession = async () => {
     }
     sources.clear();
     nextStartTime = 0;
+    lastImageData = null;
 };

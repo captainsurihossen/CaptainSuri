@@ -19,8 +19,15 @@ export interface FunctionCallInfo {
 
 export type AssistantStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'thinking' | 'error' | 'waitingForWakeWord';
 
-// Fix: Define and export AIStudio interface to resolve global declaration errors.
-export interface AIStudio {
-  hasSelectedApiKey: () => Promise<boolean>;
-  openSelectKey: () => Promise<void>;
+// Fix: Define AIStudio within the `declare global` block to make it a true global
+// type and avoid module scope conflicts that lead to declaration errors.
+declare global {
+  interface AIStudio {
+    hasSelectedApiKey: () => Promise<boolean>;
+    openSelectKey: () => Promise<void>;
+  }
+
+  interface Window {
+    aistudio: AIStudio;
+  }
 }
