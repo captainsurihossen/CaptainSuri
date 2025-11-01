@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { startJarvisSession, stopJarvisSession } from './services/jarvisService.ts';
-import { ChatMessage, FunctionCallInfo, AssistantStatus } from './types.ts';
+import { ChatMessage, FunctionCallInfo, AssistantStatus, GroundingSource } from './types.ts';
 import { MicIcon, StopIcon } from './components/Icons.tsx';
 import { CommandDisplay } from './components/CommandDisplay.tsx';
 import { ChatHistory } from './components/ChatHistory.tsx';
@@ -14,10 +14,9 @@ const App: React.FC = () => {
   const [jarvisTranscript, setJarvisTranscript] = useState('');
   const [lastFunctionCall, setLastFunctionCall] = useState<FunctionCallInfo | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
-
-  const userTranscriptRef = useRef('');
-  const jarvisTranscriptRef = useRef('');
   
+  const sourcesForNextMessage = useRef<GroundingSource[]>([]);
+
   useEffect(() => {
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -53,21 +52,19 @@ const App: React.FC = () => {
     if (isFinal && transcript.trim()) {
       setHistory(prev => [...prev, { role: 'user', text: transcript }]);
       setUserTranscript('');
-      userTranscriptRef.current = '';
     } else {
       setUserTranscript(transcript);
-      userTranscriptRef.current = transcript;
     }
   }, []);
 
   const handleJarvisTranscript = useCallback((transcript: string, isFinal: boolean) => {
     if (isFinal && transcript.trim()) {
-      setHistory(prev => [...prev, { role: 'jarvis', text: transcript }]);
+      const sources = sourcesForNextMessage.current;
+      setHistory(prev => [...prev, { role: 'jarvis', text: transcript, sources: sources }]);
       setJarvisTranscript('');
-      jarvisTranscriptRef.current = '';
+      sourcesForNextMessage.current = []; // Reset after use
     } else {
       setJarvisTranscript(transcript);
-      jarvisTranscriptRef.current = transcript;
     }
   }, []);
 
@@ -82,6 +79,10 @@ const App: React.FC = () => {
         imageUrl: imageUrl,
         text: `Here is your image of: "${prompt}"`
       }]);
+  }, []);
+
+  const handleGroundingSources = useCallback((sources: GroundingSource[]) => {
+    sourcesForNextMessage.current = sources;
   }, []);
 
   const handleError = useCallback((error: string) => {
@@ -101,6 +102,7 @@ const App: React.FC = () => {
         onJarvisTranscript: handleJarvisTranscript,
         onFunctionCall: handleFunctionCall,
         onImageGenerated: handleImageGenerated,
+        onGroundingSources: handleGroundingSources,
         onError: handleError,
       });
     }

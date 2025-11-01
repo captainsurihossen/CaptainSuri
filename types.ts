@@ -1,10 +1,16 @@
 
 export type ChatRole = 'user' | 'jarvis';
 
+export interface GroundingSource {
+  uri: string;
+  title: string;
+}
+
 export interface ChatMessage {
   role: ChatRole;
   text?: string;
   imageUrl?: string;
+  sources?: GroundingSource[];
 }
 
 export interface FunctionCallInfo {

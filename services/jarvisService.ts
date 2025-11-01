@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Modality, Type, FunctionDeclaration, LiveServerMessage } from "@google/genai";
-import { AssistantStatus, FunctionCallInfo } from '../types.ts';
+import { AssistantStatus, FunctionCallInfo, GroundingSource } from '../types.ts';
 
 // Type definition for the LiveSession object, which is not explicitly exported by the SDK
 type LiveSession = {
@@ -77,6 +77,30 @@ const generateImageFunctionDeclaration: FunctionDeclaration = {
   },
 };
 
+const generateStoryFunctionDeclaration: FunctionDeclaration = {
+    name: 'generateStory',
+    description: 'Generates a creative story based on a prompt.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            prompt: { type: Type.STRING, description: 'The topic or theme for the story, e.g., "a story about a space pirate".' },
+        },
+        required: ['prompt'],
+    },
+};
+
+const searchWebFunctionDeclaration: FunctionDeclaration = {
+    name: 'searchWeb',
+    description: 'Searches the web for up-to-date information on a given topic.',
+    parameters: {
+        type: Type.OBJECT,
+        properties: {
+            query: { type: Type.STRING, description: 'The search query.' },
+        },
+        required: ['query'],
+    },
+};
+
 
 let sessionPromise: Promise<LiveSession> | null = null;
 let mediaStream: MediaStream | null = null;
@@ -95,6 +119,7 @@ export const startJarvisSession = async (callbacks: {
   onJarvisTranscript: (transcript: string, isFinal: boolean) => void;
   onFunctionCall: (functionCall: FunctionCallInfo) => void;
   onImageGenerated: (imageUrl: string, prompt: string) => void;
+  onGroundingSources: (sources: GroundingSource[]) => void;
   onError: (error: string) => void;
 }) => {
   try {
@@ -181,9 +206,11 @@ export const startJarvisSession = async (callbacks: {
             if (message.toolCall?.functionCalls) {
                 for (const fc of message.toolCall.functionCalls) {
                     callbacks.onFunctionCall({ name: fc.name, args: fc.args });
+                    const session = await sessionPromise;
+                    if (!session) return;
 
-                    if (fc.name === 'generateImageFromPrompt') {
-                      (async () => {
+                    switch (fc.name) {
+                        case 'generateImageFromPrompt':
                           callbacks.onStatusUpdate('thinking', `Generating image: ${fc.args.prompt}`);
                           try {
                               const imageGenResponse = await ai.models.generateContent({
@@ -191,38 +218,59 @@ export const startJarvisSession = async (callbacks: {
                                   contents: { parts: [{ text: fc.args.prompt }] },
                                   config: { responseModalities: [Modality.IMAGE] },
                               });
-
                               const imagePart = imageGenResponse.candidates?.[0]?.content?.parts?.find(part => part.inlineData);
                               if (imagePart?.inlineData) {
                                   const base64ImageBytes = imagePart.inlineData.data;
                                   const imageUrl = `data:${imagePart.inlineData.mimeType};base64,${base64ImageBytes}`;
                                   callbacks.onImageGenerated(imageUrl, fc.args.prompt);
-
-                                  const session = await sessionPromise;
-                                  session?.sendToolResponse({
-                                      functionResponses: { id: fc.id, name: fc.name, response: { result: "OK, the image has been generated and displayed." } }
-                                  });
-                              } else {
-                                  throw new Error("No image data returned from API.");
-                              }
+                                  session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "OK, the image has been generated and displayed." } } });
+                              } else { throw new Error("No image data returned from API."); }
                           } catch (error) {
-                              const errorMessage = error instanceof Error ? error.message : "An unknown error occurred.";
-                              console.error("Image generation failed:", errorMessage);
+                              const errorMessage = error instanceof Error ? error.message : "Unknown error.";
                               callbacks.onError(`Image generation failed.`);
-                              const session = await sessionPromise;
-                              session?.sendToolResponse({
-                                  functionResponses: { id: fc.id, name: fc.name, response: { error: `Failed to generate image: ${errorMessage}` } }
-                              });
+                              session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { error: `Failed to generate image: ${errorMessage}` } } });
                           }
-                      })();
-                    } else if (fc.name === 'setSmartHomeDeviceState') {
-                      if(sessionPromise) {
-                          sessionPromise.then(session => {
-                              session.sendToolResponse({
-                                  functionResponses: { id: fc.id, name: fc.name, response: { result: "OK, command executed." } }
-                              });
-                          });
-                      }
+                          break;
+
+                        case 'generateStory':
+                            callbacks.onStatusUpdate('thinking', 'Writing a story...');
+                            try {
+                                const storyResponse = await ai.models.generateContent({ model: 'gemini-2.5-pro', contents: `Tell a short, creative story about: ${fc.args.prompt}` });
+                                const storyText = storyResponse.text;
+                                session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: storyText } } });
+                            } catch (error) {
+                                const errorMessage = error instanceof Error ? error.message : "Unknown error.";
+                                callbacks.onError(`Story generation failed.`);
+                                session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { error: `I was unable to write a story: ${errorMessage}` } } });
+                            }
+                            break;
+
+                        case 'searchWeb':
+                            callbacks.onStatusUpdate('thinking', `Searching for: ${fc.args.query}`);
+                            try {
+                                const searchResponse = await ai.models.generateContent({
+                                    model: 'gemini-2.5-flash',
+                                    contents: fc.args.query,
+                                    config: { tools: [{googleSearch: {}}] },
+                                });
+                                const summary = searchResponse.text;
+                                const groundingChunks = searchResponse.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+                                const sources = groundingChunks
+                                    .map(chunk => chunk.web)
+                                    .filter((source): source is { uri: string; title: string; } => !!source && !!source.uri && !!source.title);
+                                
+                                callbacks.onGroundingSources(sources);
+                                session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: `Here is what I found about ${fc.args.query}: ${summary}` } } });
+                            } catch (error) {
+                                const errorMessage = error instanceof Error ? error.message : "Unknown error.";
+                                callbacks.onError(`Web search failed.`);
+                                session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { error: `I was unable to search the web: ${errorMessage}` } } });
+                            }
+                            break;
+                            
+                        case 'setSmartHomeDeviceState':
+                            session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: "OK, command executed." } } });
+                            break;
                     }
                 }
             }
@@ -249,8 +297,13 @@ export const startJarvisSession = async (callbacks: {
         speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Puck' } } },
         inputAudioTranscription: {},
         outputAudioTranscription: {},
-        tools: [{ functionDeclarations: [controlLightFunctionDeclaration, generateImageFunctionDeclaration] }],
-        systemInstruction: "You are Jarvis, a sophisticated AI assistant. Your responses are concise and helpful. You identify and confirm smart home commands. You can also generate images from a text prompt.",
+        tools: [{ functionDeclarations: [
+            controlLightFunctionDeclaration, 
+            generateImageFunctionDeclaration,
+            generateStoryFunctionDeclaration,
+            searchWebFunctionDeclaration,
+        ] }],
+        systemInstruction: "You are Jarvis, a sophisticated AI assistant. Your responses are concise and helpful. You can control smart home devices, generate images, write stories, and search the web for up-to-date information using the tools provided.",
       },
     });
 
