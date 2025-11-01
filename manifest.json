@@ -1,7 +1,8 @@
+
 {
   "short_name": "Jarvis",
-  "name": "Jarvis AI Voice Assistant",
-  "description": "A sophisticated voice assistant powered by the Gemini API, installable on your desktop.",
+  "name": "J.A.R.V.I.S AI Voice Assistant",
+  "description": "A sophisticated voice assistant powered by the Gemini API, featuring real-time voice chat, command recognition, and live transcription.",
   "icons": [
     {
       "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNTYgMjU2Ij48cmVjdCB3aWR0aD0iMjU2IiBoZWlnaHQ9IjI1NiIgZmlsbD0ibm9uZSIvPjxwYXRoIGQ9Ik0xMjgsMjRBMTA0LDEwNCwwLDEsMCwyMzIsMTI4LDEwNC4xLDEwNC4xLDAsMCwwLDEyOCwyNFptMCwxOTJhODgsODgsMCwxLDEsODgtODhBODguMSw4OC4xLDAsMCwxLDEyOCwyMTZabTAtNDBhNDgsNDgsMCwxLDAsNDgtNDhBNDguMSw0OC4xLDAsMCwwLDEyOCwxNzZabTAsNjRhMTYsMTYsMCwxLDEsMTYtMTZBMTYsMTYsMCwwLDEsMTI4LDI0MFoiIGZpbGw9IiMwNmI2ZDIiLz48cGF0aCBkPSJNMTY0LjksOTEuMUExMiwxMiwwLDAsMSwxNTIsMTAzVjEzNmExMiwxMiwwLDAsMS0yNCwwVjEwM2ExMiwxMiwwLDAsMS0xMi45LTExLjksNDAsNDAsMCwxLDEsNDkuOCwwWiIgZmlsbD0iIzNmZDhmYSIvPjwvc3ZnPg==",

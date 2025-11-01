@@ -1,4 +1,3 @@
-
 export type ChatRole = 'user' | 'jarvis';
 
 export interface GroundingSource {
@@ -18,4 +17,10 @@ export interface FunctionCallInfo {
   args: Record<string, any>;
 }
 
-export type AssistantStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'thinking' | 'error';
+export type AssistantStatus = 'idle' | 'connecting' | 'listening' | 'speaking' | 'thinking' | 'error' | 'waitingForWakeWord';
+
+// Fix: Define and export AIStudio interface to resolve global declaration errors.
+export interface AIStudio {
+  hasSelectedApiKey: () => Promise<boolean>;
+  openSelectKey: () => Promise<void>;
+}

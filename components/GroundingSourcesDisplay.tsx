@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { GroundingSource } from '../types.ts';
 

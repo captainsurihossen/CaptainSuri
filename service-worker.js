@@ -1,5 +1,4 @@
-
-const CACHE_NAME = 'jarvis-v4';
+const CACHE_NAME = 'jarvis-v11';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -12,6 +11,7 @@ const urlsToCache = [
   '/components/CommandDisplay.tsx',
   '/components/ChatHistory.tsx',
   '/components/GroundingSourcesDisplay.tsx',
+  '/components/SuggestionChips.tsx',
 ];
 
 self.addEventListener('install', event => {

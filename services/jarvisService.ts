@@ -1,4 +1,3 @@
-
 import { GoogleGenAI, Modality, Type, FunctionDeclaration, LiveServerMessage } from "@google/genai";
 import { AssistantStatus, FunctionCallInfo, GroundingSource } from '../types.ts';
 
@@ -123,7 +122,7 @@ export const startJarvisSession = async (callbacks: {
   onError: (error: string) => void;
 }) => {
   try {
-    callbacks.onStatusUpdate('connecting', 'Initializing Jarvis...');
+    callbacks.onStatusUpdate('connecting', 'Starting Jarvis...');
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY as string });
 
     let currentInputTranscription = '';
@@ -187,6 +186,9 @@ export const startJarvisSession = async (callbacks: {
           
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
             if (base64Audio && outputAudioContext && outputNode) {
+              if (outputAudioContext.state === 'suspended') {
+                  await outputAudioContext.resume();
+              }
               nextStartTime = Math.max(nextStartTime, outputAudioContext.currentTime);
               const audioBuffer = await decodeAudioData(decode(base64Audio), outputAudioContext, 24000, 1);
               const sourceNode = outputAudioContext.createBufferSource();
@@ -233,9 +235,9 @@ export const startJarvisSession = async (callbacks: {
                           break;
 
                         case 'generateStory':
-                            callbacks.onStatusUpdate('thinking', 'Writing a story...');
+                            callbacks.onStatusUpdate('thinking', 'Writing story...');
                             try {
-                                const storyResponse = await ai.models.generateContent({ model: 'gemini-2.5-pro', contents: `Tell a short, creative story about: ${fc.args.prompt}` });
+                                const storyResponse = await ai.models.generateContent({ model: 'gemini-2.5-pro', contents: `Tell a creative story about: ${fc.args.prompt}. The story should be engaging and suitable for being read aloud.` });
                                 const storyText = storyResponse.text;
                                 session.sendToolResponse({ functionResponses: { id: fc.id, name: fc.name, response: { result: storyText } } });
                             } catch (error) {
@@ -303,7 +305,7 @@ export const startJarvisSession = async (callbacks: {
             generateStoryFunctionDeclaration,
             searchWebFunctionDeclaration,
         ] }],
-        systemInstruction: "You are Jarvis, a sophisticated AI assistant. Your responses are concise and helpful. You can control smart home devices, generate images, write stories, and search the web for up-to-date information using the tools provided.",
+        systemInstruction: "You are Jarvis, a sophisticated AI assistant that communicates primarily through spoken voice. Your verbal responses are concise and helpful for general tasks, but you can be creative and detailed when asked to write a story. You can control smart home devices, generate images, write stories, and search the web for up-to-date information using the tools provided.",
       },
     });
 
