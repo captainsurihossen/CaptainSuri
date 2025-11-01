@@ -1,5 +1,4 @@
-
-const CACHE_NAME = 'jarvis-v2';
+const CACHE_NAME = 'jarvis-v3';
 const urlsToCache = [
   '/',
   '/index.html',
